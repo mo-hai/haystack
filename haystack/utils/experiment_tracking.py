@@ -7,6 +7,8 @@ from pathlib import Path
 import mlflow
 from requests.exceptions import ConnectionError
 
+from clearml import Task, Logger
+
 from haystack import __version__
 from haystack.environment import get_or_create_env_meta_data
 
@@ -211,3 +213,66 @@ class MLflowTrackingHead(BaseTrackingHead):
 
     def end_run(self):
         mlflow.end_run()
+
+
+
+class ClearMLTrackingHead(BaseTrackingHead):
+    def __init__(self, tracking_uri: str = None, auto_track_environment: bool = True) -> None:
+        """
+        Experiment tracking head for MLflow.
+        """
+        super().__init__()
+        self.tracking_uri = tracking_uri
+        self.auto_track_environment = auto_track_environment
+        self.task = None
+
+    def init_experiment(
+        self,
+        experiment_name: str,  # project name of at least 3 characters
+        run_name: str,  # task name of at least 3 characters
+        tags: Optional[list[str]] = None,
+    ):
+        try:
+            self.task = Task.init(
+                project_name=experiment_name,
+                task_name=run_name,
+                tags=tags,
+                output_uri=self.tracking_uri,
+            )
+            logger.info(
+                "Tracking task %s of project %s by clearml. Artifacts logged to %s", run_name, experiment_name, self.tracking_uri
+            )
+            if self.auto_track_environment:
+                self.task.set_user_properties(flatten_dict({"environment": get_or_create_env_meta_data()}))
+        except ConnectionError:
+            raise Exception(
+                f"ClearML cannot connect to the remote server, something is wrong."
+            )
+        except Exception as e:
+            logger.warning("Something failed: %s", e)
+
+    def track_metrics(self, metrics: Dict[str, Any], step: int):
+        try:
+            metrics = flatten_dict(metrics)
+            for k, v in metrics.items():
+                Logger.current_logger().report_scalar(
+                    title=k, series=k, iteration=step, value=v)
+        except ConnectionError:
+            logger.warning("ConnectionError in logging metrics to ClearML")
+        except Exception as e:
+            logger.warning("Failed to log metrics: %s", e)
+
+    def track_params(self, params: Dict[str, Any]):
+        try:
+            params = flatten_dict(params)
+            self.task.connect(params)
+        except ConnectionError:
+            logger.warning("ConnectionError in logging params to ClearML")
+        except Exception as e:
+            logger.warning("Failed to log params: %s", e)
+
+    def track_artifacts(self, dir_path: Union[str, Path], artifact_path: Optional[str] = None):
+        pass
+
+    def end_run(self):
+        self.task.close()
