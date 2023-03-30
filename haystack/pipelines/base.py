@@ -908,7 +908,7 @@ class Pipeline:
         corpus_file_paths: List[str],
         experiment_name: str,
         experiment_run_name: str,
-        experiment_tracking_tool: Literal["mlflow", None] = None,
+        experiment_tracking_tool: Literal["mlflow", "clearml", None] = None,
         experiment_tracking_uri: Optional[str] = None,
         corpus_file_metas: Optional[List[Dict[str, Any]]] = None,
         corpus_meta: Optional[Dict[str, Any]] = None,
